@@ -17,14 +17,11 @@ async function getData(userId: string) {
       total: true,
       currency: true,
     },
-
     orderBy: {
       createdAt: "desc",
     },
-
     take: 7,
   });
-
   return data;
 }
 
@@ -36,21 +33,21 @@ export async function RecentInvoices() {
       <CardHeader>
         <CardTitle>Recent Invoices</CardTitle>
       </CardHeader>
-      <CardContent className="flex flex-col gap-8">
+      <CardContent className="flex flex-col gap-4">
         {data.map((item) => (
-          <div className="flex items-center gap-4" key={item.id}>
+          <div className="grid grid-cols-[auto_minmax(100px,1fr)_auto] items-center gap-4" key={item.id}>
             <Avatar className="hidden sm:flex size-9">
               <AvatarFallback>{item.clientName.slice(0, 2)}</AvatarFallback>
             </Avatar>
-            <div className="flex flex-col gap-1">
-              <p className="text-sm font-medium leading-none">
+            <div className="flex flex-col min-w-0">
+              <p className="text-sm font-medium leading-none truncate">
                 {item.clientName}
               </p>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground truncate">
                 {item.clientEmail}
               </p>
             </div>
-            <div className="ml-auto font-medium">
+            <div className="font-medium whitespace-nowrap justify-self-end text-xs lg:text-sm">
               +{formatCurrency({
                 amount: item.total,
                 currency: item.currency as any,
