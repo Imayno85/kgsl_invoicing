@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Logo from "@/public/logo.png";
 import Image from "next/image";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { RainbowButton } from "@/components/magicui/rainbow-button";
 
 export function Navbar() {
@@ -14,7 +14,8 @@ export function Navbar() {
         </h3>
       </Link>
       <Link href="/login">
-        <RainbowButton>Get Started</RainbowButton>
+     <Button>Get Started</Button>
+        {/* <RainbowButton>Get Started</RainbowButton> */}
       </Link>
     </div>
   );

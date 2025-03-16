@@ -1,6 +1,4 @@
-import { Avatar } from "@/components/ui/avatar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { AvatarFallback } from "@radix-ui/react-avatar";
 import prisma from "../utils/db";
 import { requireUser } from "../utils/hooks";
 import { formatCurrency } from "../utils/formatCurrency";
@@ -35,11 +33,11 @@ export async function RecentInvoices() {
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         {data.map((item) => (
-          <div className="grid grid-cols-[auto_minmax(100px,1fr)_auto] items-center gap-4" key={item.id}>
-            <Avatar className="hidden sm:flex size-9">
-              <AvatarFallback>{item.clientName.slice(0, 2)}</AvatarFallback>
-            </Avatar>
-            <div className="flex flex-col min-w-0">
+          <div className="grid grid-cols-[2rem_1fr_auto] items-center gap-4 w-full" key={item.id}>
+            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-muted text-xs font-medium">
+              {item.clientName.slice(0, 2)}
+            </div>
+            <div className="flex flex-col w-full overflow-hidden">
               <p className="text-sm font-medium leading-none truncate">
                 {item.clientName}
               </p>
@@ -47,7 +45,7 @@ export async function RecentInvoices() {
                 {item.clientEmail}
               </p>
             </div>
-            <div className="font-medium whitespace-nowrap justify-self-end text-xs lg:text-sm">
+            <div className="font-medium whitespace-nowrap flex-shrink-0 text-xs lg:text-sm">
               +{formatCurrency({
                 amount: item.total,
                 currency: item.currency as any,

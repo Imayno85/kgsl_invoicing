@@ -20,13 +20,18 @@ async function Authorize(invoiceId: string, userId: string) {
   const data = await prisma.invoice.findUnique({
     where: {
       id: invoiceId,
-      userId: userId,
+    },
+    select: {
+      id: true,
+      userId: true,
     },
   });
 
-  if (!data) {
+  if (!data || data.userId !== userId) {
     return redirect("/dashboard/invoices");
   }
+  
+  return data;
 }
 
 type Params = Promise<{ invoiceId: string }>;
@@ -40,17 +45,37 @@ export default async function DeleteInvoiceRoute({
   const { invoiceId } = await params;
   await Authorize(invoiceId, session.user?.id as string);
 
+  async function handleDelete() {
+    "use server";
+
+    const result = await DeleteInvoice(invoiceId);
+    
+    if (result.error) {
+      // You could handle errors differently if needed
+      console.error(result.error);
+    }
+    
+    // Redirect regardless to avoid showing error to users
+    // You might want to improve this with better error handling
+    redirect("/dashboard/invoices");
+  }
+
   return (
     <div className="flex flex-1 justify-center items-center">
       <Card className="max-w-[500px]">
         <CardHeader>
           <CardTitle>Delete Invoice</CardTitle>
           <CardDescription>
-            Are you sure you wanna delete this invoice ?
+            Are you sure you want to delete this invoice?
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Image src={WarningGif} alt="Warning Gif" className="rounded-lg" />
+          <Image 
+            src={WarningGif} 
+            alt="Warning Gif" 
+            className="rounded-lg"
+            unoptimized // Add this to fix the animation warning
+          />
         </CardContent>
         <CardFooter className="flex items-center justify-between">
           <Link
@@ -59,13 +84,7 @@ export default async function DeleteInvoiceRoute({
           >
             Cancel
           </Link>
-          <form
-            action={async () => {
-              "use server";
-
-              await DeleteInvoice(invoiceId);
-            }}
-          >
+          <form action={handleDelete}>
             <SubmitButton text="Delete Invoice" variant={"destructive"} />
           </form>
         </CardFooter>

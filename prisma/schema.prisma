@@ -19,7 +19,7 @@ model User {
   sessions      Session[]
   // Optional for WebAuthn support
   Authenticator Authenticator[]
-  invoices Invoice[]
+  invoices      Invoice[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -98,21 +98,51 @@ model Invoice {
   currency String
   invoiceNumber Int
   note String?
+  allowOverpayment Boolean @default(false)
+
   
   invoiceItemDescription String
   invoiceItemQuantity Int
   invoiceItemRate Int
 
+  // New field to track how much has been paid
+  paidAmount Int @default(0)
+
+  // Relation to receipts
+  receipts Receipt[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
 
   User User? @relation(fields: [userId], references: [id])
   userId String
 }
 
+// New model for receipts
+model Receipt {
+  id String @id @default(uuid())
+  receiptNumber String
+  amount Int
+  paymentDate DateTime
+  paymentMethod String // e.g., "Credit Card", "Bank Transfer", "Cash"
+  reference String? // Payment reference or transaction ID
+  note String?
+  currency String // Add this field to store UGX or USD
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relation to the invoice this receipt belongs to
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+  invoiceId String
+}
 
+// Updated enum to include PARTIALLY_PAID status
 enum InvoiceStatus {
-  PAID
+  DRAFT
   PENDING
+  PARTIALLY_PAID // Add this status
+  PAID
+  OVERDUE
+  CANCELLED
 }

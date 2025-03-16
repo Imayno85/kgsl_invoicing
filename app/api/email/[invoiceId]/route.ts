@@ -1,60 +1,67 @@
+// app/api/email/[invoiceId]/route.ts
+import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/app/utils/db";
-import { requireUser } from "@/app/utils/hooks";
 import { emailClient } from "@/app/utils/mailtrap";
-import { NextResponse } from "next/server";
+import { formatCurrency } from "@/app/utils/formatCurrency";
 
 export async function POST(
-  request: Request,
-  {
-    params,
-  }: {
-    params: Promise<{ invoiceId: string }>;
-  }
+  request: NextRequest,
+  context: { params: { invoiceId: string } }
 ) {
   try {
-    const session = await requireUser();
-
-    const { invoiceId } = await params;
-
-    const invoiceData = await prisma.invoice.findUnique({
-      where: {
-        id: invoiceId,
-        userId: session.user?.id,
-      },
-    });
-
-    if (!invoiceData) {
-      return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
+    const { invoiceId } = context.params;
+    
+    if (!invoiceId) {
+      return NextResponse.json(
+        { error: "Invoice ID is required" },
+        { status: 400 }
+      );
     }
 
+    // Find the invoice
+    const invoice = await prisma.invoice.findUnique({
+      where: { id: invoiceId },
+    });
+
+    if (!invoice) {
+      return NextResponse.json(
+        { error: "Invoice not found" },
+        { status: 404 }
+      );
+    }
+
+    // Send email notification
     const sender = {
-      email: "hello@demomailtrap.com",
-      name: "William G. Onyami",
+      email: "hello@knightguardssecurity.com",
+      name: "Knight Guards",
     };
 
     await emailClient.send({
       from: sender,
-      to: [{ email: "imayno85@gmail.com" }],
-      template_uuid: "b7b5b035-bfaa-4bcb-813d-aab38de5775d",
+      to: [{ email: invoice.clientEmail }],
+      template_uuid: "cf834ff2-c775-48b5-942a-9de8ada6000b",
       template_variables: {
-        "first_name": invoiceData.clientName,
-        "company_info_name": "KGSL Invoices",
-        "company_info_address": "Kampala, Uganda",
-        "company_info_city": "Mukono",
-        "company_info_zip_code": "11005",
-        "company_info_country": "Uganda"
-      }
+        clientName: invoice.clientName,
+        invoiceNumber: invoice.invoiceNumber,
+        invoiceDueDate: new Intl.DateTimeFormat("en-UG", {
+          dateStyle: "long",
+        }).format(new Date(invoice.date)),
+        totalAmount: formatCurrency({
+          amount: invoice.total,
+          currency: invoice.currency as "UGX" | "USD",
+        }),
+        invoiceLink:
+          process.env.NODE_ENV !== "production"
+            ? `http://localhost:3000/api/invoice/${invoice.id}`
+            : `https://localhost:3000/api/invoice/${invoice.id}`,
+      },
     });
-
-
-    // console.log("Sender:", sender);
-    // console.log("Invoice Data:", invoiceData);
-
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    console.error("Error sending email:", error);
     return NextResponse.json(
-      { error: "Failed to send email reminder" },
+      { error: "Failed to send email" },
       { status: 500 }
     );
   }

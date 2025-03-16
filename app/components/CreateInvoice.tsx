@@ -18,14 +18,22 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { CalendarIcon } from "lucide-react";
-import { useActionState, useState } from "react";
+import { CalendarIcon, Loader2, Search } from "lucide-react";
+import { useActionState, useEffect, useState, useRef } from "react";
 import { SubmitButton } from "./SubmitButtons";
-import { createInvoice } from "../actions";
 import { useForm } from "@conform-to/react";
 import { parseWithZod } from "@conform-to/zod";
-import { invoiceSchema } from "../utils/zodSchemas";
+
 import { formatCurrency } from "../utils/formatCurrency";
+import { createInvoice, getNextInvoiceNumber, searchClients } from "@/app/actions";
+import { invoiceSchema } from "../utils/zodSchemas";
+
+interface Client {
+  id: string;
+  name: string;
+  email: string;
+  address: string;
+}
 
 interface iAppProps {
   firstName: string;
@@ -58,10 +66,94 @@ export function CreateInvoice({
   const [rate, setRate] = useState("");
   const [quantity, setQuantity] = useState("");
   const [currency, setCurrency] = useState("UGX");
+  const [nextInvoiceNumber, setNextInvoiceNumber] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  
+  // Client search state
+  const [clientSearchTerm, setClientSearchTerm] = useState("");
+  const [searchingClients, setSearchingClients] = useState(false);
+  const [clientResults, setClientResults] = useState<Client[]>([]);
+  const [showClientSearch, setShowClientSearch] = useState(false);
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  
+  // Refs for client form fields
+  const clientNameRef = useRef<HTMLInputElement>(null);
+  const clientEmailRef = useRef<HTMLInputElement>(null);
+  const clientAddressRef = useRef<HTMLInputElement>(null);
+  const searchPanelRef = useRef<HTMLDivElement>(null);
+
+  // Fetch the next invoice number when the component mounts
+  useEffect(() => {
+    const fetchNextInvoiceNumber = async () => {
+      try {
+        const response = await getNextInvoiceNumber();
+        setNextInvoiceNumber(response);
+      } catch (error) {
+        console.error("Failed to get next invoice number:", error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchNextInvoiceNumber();
+  }, []);
+
+  // Client search with debounce
+  useEffect(() => {
+    if (clientSearchTerm.length < 2) {
+      setClientResults([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      try {
+        setSearchingClients(true);
+        const results = await searchClients(clientSearchTerm);
+        setClientResults(results);
+      } catch (error) {
+        console.error("Failed to search clients:", error);
+      } finally {
+        setSearchingClients(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [clientSearchTerm]);
+
+  // Close search panel when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (searchPanelRef.current && !searchPanelRef.current.contains(event.target as Node)) {
+        setShowClientSearch(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  const handleSelectClient = (client: Client) => {
+    setSelectedClient(client);
+    setShowClientSearch(false);
+    setClientSearchTerm(client.name);
+    
+    // Update the client form fields
+    if (clientNameRef.current) clientNameRef.current.value = client.name;
+    if (clientEmailRef.current) clientEmailRef.current.value = client.email;
+    if (clientAddressRef.current) clientAddressRef.current.value = client.address;
+  };
+
+  const openClientSearch = () => {
+    setShowClientSearch(true);
+    // If there's a client name already, use it as the search term
+    if (clientNameRef.current && clientNameRef.current.value) {
+      setClientSearchTerm(clientNameRef.current.value);
+    }
+  };
 
   const calculateTotal = (Number(quantity) || 0) * (Number(rate) || 0);
-
-  // console.log(calculateTotal);
 
   return (
     <Card className="w-full max-w-4xl mx-auto ">
@@ -77,7 +169,7 @@ export function CreateInvoice({
           {/* TOTAL AMOUNT INPUT */}
           <input
             name={fields.total.name}
-            value={calculateTotal}
+            value={String(calculateTotal)}
             type="hidden"
           />
 
@@ -104,9 +196,10 @@ export function CreateInvoice({
                 <Input
                   name={fields.invoiceNumber.name}
                   key={fields.invoiceNumber.key}
-                  defaultValue={fields.invoiceNumber.initialValue}
-                  placeholder="005"
+                  defaultValue={nextInvoiceNumber || fields.invoiceNumber.initialValue}
+                  placeholder={isLoading ? "Loading..." : "005"}
                   className="rounded-l-none"
+                  readOnly={isLoading}
                 />
               </div>
               <p className="text-sm text-red-500">
@@ -160,7 +253,6 @@ export function CreateInvoice({
                   key={fields.fromAddress.key}
                   placeholder="Your Address"
                   defaultValue={address}
-               
                 />
                 <p className="text-sm text-red-500">
                   {fields.fromAddress.errors}
@@ -171,18 +263,93 @@ export function CreateInvoice({
             <div>
               <Label>To:</Label>
               <div className="space-y-2">
-                <Input
-                  name={fields.clientName.name}
-                  key={fields.clientName.key}
-                  defaultValue={fields.clientName.initialValue}
-                  placeholder="Client Name"
-                />
+                <div className="flex items-center gap-2">
+                  <div className="flex-grow">
+                    <Input
+                      name={fields.clientName.name}
+                      key={fields.clientName.key}
+                      ref={clientNameRef}
+                      defaultValue={fields.clientName.initialValue}
+                      placeholder="Client Name"
+                      value={clientSearchTerm}
+                      onChange={(e) => {
+                        setClientSearchTerm(e.target.value);
+                      }}
+                      onClick={openClientSearch}
+                    />
+                  </div>
+                  <Button 
+                    type="button"
+                    variant="outline"
+                    onClick={openClientSearch}
+                  >
+                    <Search className="h-4 w-4" />
+                  </Button>
+                </div>
+                {showClientSearch && (
+                  <div className="relative" ref={searchPanelRef}>
+                    <div className="absolute z-10 w-full">
+                      <Card>
+                        <CardContent className="p-2">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Input
+                              placeholder="Search clients..."
+                              value={clientSearchTerm}
+                              onChange={(e) => setClientSearchTerm(e.target.value)}
+                              autoFocus
+                            />
+                            {searchingClients && (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            )}
+                          </div>
+                          <div className="max-h-48 overflow-y-auto">
+                            {clientResults.length === 0 ? (
+                              <p className="text-sm text-muted-foreground p-2">
+                                {clientSearchTerm.length < 2 
+                                  ? "Type at least 2 characters to search" 
+                                  : searchingClients 
+                                    ? "Searching..." 
+                                    : "No clients found"}
+                              </p>
+                            ) : (
+                              <div className="space-y-1">
+                                {clientResults.map((client) => (
+                                  <div
+                                    key={client.id}
+                                    className="flex items-center p-2 hover:bg-muted cursor-pointer rounded"
+                                    onClick={() => handleSelectClient(client)}
+                                  >
+                                    <div>
+                                      <p className="font-medium">{client.name}</p>
+                                      <p className="text-sm text-muted-foreground">{client.email}</p>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <div className="mt-2 flex justify-end">
+                            <Button 
+                              type="button" 
+                              variant="outline" 
+                              size="sm" 
+                              onClick={() => setShowClientSearch(false)}
+                            >
+                              Close
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </div>
+                  </div>
+                )}
                 <p className="text-sm text-red-500">
                   {fields.clientName.errors}
                 </p>
                 <Input
                   name={fields.clientEmail.name}
                   key={fields.clientEmail.key}
+                  ref={clientEmailRef}
                   defaultValue={fields.clientEmail.initialValue}
                   placeholder="Client Email"
                 />
@@ -192,6 +359,7 @@ export function CreateInvoice({
                 <Input
                   name={fields.clientAddress.name}
                   key={fields.clientAddress.key}
+                  ref={clientAddressRef}
                   defaultValue={fields.clientAddress.initialValue}
                   placeholder="Client Address"
                 />
@@ -252,8 +420,7 @@ export function CreateInvoice({
                 </SelectContent>
               </Select>
               <p
-                className="text-sm text-red-500
-              "
+                className="text-sm text-red-500"
               >
                 {fields.dueDate.errors}
               </p>
@@ -288,7 +455,6 @@ export function CreateInvoice({
                   value={quantity}
                   onChange={(e) => setQuantity(e.target.value)}
                 />
-
                 <p className="text-sm text-red-500">
                   {fields.invoiceItemQuantity.errors}
                 </p>

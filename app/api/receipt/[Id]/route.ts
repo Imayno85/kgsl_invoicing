@@ -1,51 +1,44 @@
-//  api/invoice/[invoiceId]/route.ts
-
+// app/api/receipt/[id]/route.ts
+import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/app/utils/db";
-import { NextResponse } from "next/server";
 import jsPDF from "jspdf";
 import { formatCurrency } from "@/app/utils/formatCurrency";
 import fs from "fs/promises";
 import path from "path";
+import { format } from "date-fns";
 
 export async function GET(
-  request: Request,
-  { params }: { params: { invoiceId: string } }
+  request: NextRequest,
+  { params }: { params: { id: string } }
 ) {
   try {
-    // Await params to ensure it's resolved before accessing properties
-    const { invoiceId } = await params;
-
-    if (!invoiceId) {
-      return NextResponse.json({ error: "Invoice ID is required" }, { status: 400 });
-    }
-
-    const data = await prisma.invoice.findUnique({
-      where: { id: invoiceId },
-      select: {
-        invoiceName: true,
-        invoiceNumber: true,
-        currency: true,
-        fromName: true,
-        fromEmail: true,
-        fromAddress: true,
-        clientName: true,
-        clientAddress: true,
-        clientEmail: true,
-        date: true,
-        dueDate: true,
-        invoiceItemDescription: true,
-        invoiceItemQuantity: true,
-        invoiceItemRate: true,
-        total: true,
-        note: true,
+    const receipt = await prisma.receipt.findUnique({
+      where: {
+        id: params.id,
+      },
+      include: {
+        invoice: {
+          select: {
+            invoiceNumber: true,
+            currency: true,
+            fromName: true,
+            fromEmail: true,
+            fromAddress: true,
+            clientName: true,
+            clientAddress: true,
+            clientEmail: true,
+            invoiceItemDescription: true,
+            total: true,
+          },
+        },
       },
     });
 
-    if (!data) {
-      return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
+    if (!receipt) {
+      return new NextResponse("Receipt not found", { status: 404 });
     }
 
-    // Initialize PDF with better default settings
+    // Initialize PDF
     const pdf = new jsPDF({
       orientation: "portrait",
       unit: "mm",
@@ -53,7 +46,7 @@ export async function GET(
       compress: true,
     });
 
-    // Constants for better layout management
+    // Constants for layout
     const pageWidth = 210;
     const margin = {
       left: 20,
@@ -63,16 +56,17 @@ export async function GET(
     };
     const contentWidth = pageWidth - margin.left - margin.right;
     const lineHeight = 7;
-    const currencySymbol = data.currency === "UGX" ? "UGX" : "USD";
+    
+    // Ensure currency is a valid string
+    const currency = receipt.currency || receipt.invoice.currency || "UGX";
+    const currencySymbol = currency === "UGX" ? "UGX" : "USD";
 
-    // Add custom font
+    // Add font
     pdf.setFont("helvetica", "normal");
 
     // Helper function for formatting dates
     const formatDate = (date: Date) => {
-      return new Intl.DateTimeFormat("en-UG", {
-        dateStyle: "long",
-      }).format(date);
+      return format(new Date(date), "MMMM dd, yyyy");
     };
 
     // Helper function for drawing lines
@@ -90,52 +84,56 @@ export async function GET(
       pdf.addImage(logoDataUri, "PNG", margin.left, margin.top, 35, 35);
     } catch (error) {
       console.error("Error loading logo:", error);
-      // Continue without logo rather than failing the whole PDF generation
     }
 
-    // Header Section with improved positioning
+    // Receipt Header
     pdf.setFontSize(24);
     pdf.setTextColor(44, 62, 80); // Dark blue-grey color
-    const invoiceTitle = `INVOICE #${data.invoiceNumber}`;
-    const invoiceTitleWidth = pdf.getTextWidth(invoiceTitle);
-    pdf.text(invoiceTitle, pageWidth - margin.right - invoiceTitleWidth, 40);
+    const receiptTitle = `RECEIPT #${receipt.receiptNumber}`;
+    const receiptTitleWidth = pdf.getTextWidth(receiptTitle);
+    pdf.text(receiptTitle, pageWidth - margin.right - receiptTitleWidth, 40);
 
-    // Business Information Section with bold "From:"
+    // Business Information
     pdf.setFontSize(12);
-    pdf.setTextColor(52, 73, 94); // Slightly lighter blue-grey
+    pdf.setTextColor(52, 73, 94);
     pdf.setFont("helvetica", "bold");
     pdf.text("From:", margin.left, 70);
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(10);
     pdf.text(
       [
-        data.fromName,
-        data.fromEmail,
-        data.fromAddress || "Kampala, Central Region, Uganda",
+        receipt.invoice.fromName,
+        receipt.invoice.fromEmail,
+        receipt.invoice.fromAddress || "Kampala, Central Region, Uganda",
       ],
       margin.left,
       75
     );
 
-    // Client Information with bold "Bill To:"
+    // Client Information
     pdf.setFontSize(12);
     pdf.setFont("helvetica", "bold");
-    pdf.text("Bill To:", margin.left, 95);
+    pdf.text("Received From:", margin.left, 95);
     pdf.setFont("helvetica", "normal");
     pdf.setFontSize(10);
     pdf.text(
-      [data.clientName, data.clientEmail, data.clientAddress],
+      [
+        receipt.invoice.clientName,
+        receipt.invoice.clientEmail || "",
+        receipt.invoice.clientAddress || "",
+      ],
       margin.left,
       100
     );
 
-    // Invoice Details with better alignment
+    // Receipt Details
     const detailsX = pageWidth - margin.right - 60;
+    pdf.setFontSize(10);
     pdf.text(
       [
-        `Date: ${formatDate(data.date)}`,
-        `Due Date: Net ${data.dueDate}`,
-        `Currency: ${currencySymbol}`,
+        `Receipt Date: ${formatDate(receipt.paymentDate)}`,
+        `Invoice #: ${receipt.invoice.invoiceNumber}`,
+        `Payment Method: ${(receipt.paymentMethod || "").replace('_', ' ')}`,
       ],
       detailsX,
       75
@@ -144,14 +142,12 @@ export async function GET(
     // Draw separator
     drawLine(115);
 
-    // Table Headers with improved styling
+    // Payment Details Header
     pdf.setFillColor(241, 245, 249); // Light grey background
     pdf.rect(margin.left, 120, contentWidth, 10, "F");
     pdf.setFont("helvetica", "bold");
     pdf.setTextColor(44, 62, 80);
     pdf.text("Description", margin.left + 5, 126);
-    pdf.text("Qty", 110, 126, { align: "right" });
-    pdf.text("Rate", 140, 126, { align: "right" });
     pdf.text("Amount", pageWidth - margin.right - 5, 126, { align: "right" });
 
     // Item Details
@@ -159,26 +155,13 @@ export async function GET(
     pdf.setTextColor(52, 73, 94);
     let currentY = 140;
 
-    // Add item with proper formatting
-    pdf.text(data.invoiceItemDescription, margin.left + 5, currentY);
-    pdf.text(data.invoiceItemQuantity.toString(), 110, currentY, {
-      align: "right",
-    });
+    // Add payment details
+    pdf.text(`Payment for Invoice #${receipt.invoice.invoiceNumber}`, margin.left + 5, currentY);
+    // Use amount property instead of amountPaid
     pdf.text(
       formatCurrency({
-        amount: data.invoiceItemRate,
-        currency: data.currency as "UGX" | "USD",
-      })
-        .toString()
-        .replace("USh", currencySymbol),
-      140,
-      currentY,
-      { align: "right" }
-    );
-    pdf.text(
-      formatCurrency({
-        amount: data.total,
-        currency: data.currency as "UGX" | "USD",
+        amount: receipt.amount as number,
+        currency: currency as "UGX" | "USD",
       })
         .toString()
         .replace("USh", currencySymbol),
@@ -187,17 +170,18 @@ export async function GET(
       { align: "right" }
     );
 
-    // Totals Section with better styling
+    // Totals Section
     currentY += 20;
     drawLine(currentY);
     currentY += 10;
 
     pdf.setFont("helvetica", "bold");
-    pdf.text("Total", 140, currentY);
+    pdf.text("Total Paid", 140, currentY);
+    // Use amount property instead of amountPaid
     pdf.text(
       formatCurrency({
-        amount: data.total,
-        currency: data.currency as "UGX" | "USD",
+        amount: receipt.amount as number,
+        currency: currency as "UGX" | "USD",
       })
         .toString()
         .replace("USh", currencySymbol),
@@ -206,17 +190,25 @@ export async function GET(
       { align: "right" }
     );
 
-    // Notes Section with better formatting
-    if (data.note) {
+    // Payment Status
+    currentY += 20;
+    pdf.setFillColor(220, 252, 231); // Light green background for success
+    pdf.rect(margin.left, currentY, contentWidth, 10, "F");
+    pdf.setTextColor(22, 101, 52); // Dark green text
+    pdf.text("PAID", pageWidth / 2, currentY + 6, { align: "center" });
+
+    // Notes Section
+    if (receipt.note) {
       currentY += 20;
       pdf.setFont("helvetica", "bold");
+      pdf.setTextColor(44, 62, 80);
       pdf.setFontSize(10);
       pdf.text("Notes:", margin.left, currentY);
       pdf.setFont("helvetica", "normal");
-      pdf.setTextColor(74, 85, 104); // Softer text color for notes
+      pdf.setTextColor(74, 85, 104);
 
       // Word wrap for notes
-      const splitNotes = pdf.splitTextToSize(data.note, contentWidth);
+      const splitNotes = pdf.splitTextToSize(receipt.note, contentWidth);
       pdf.text(splitNotes, margin.left, currentY + 7);
     }
 
@@ -228,7 +220,6 @@ export async function GET(
     pdf.text(
       [
         "Thank you for your business",
-        "Payment Terms: Net " + data.dueDate,
         "Contact: +256 772 676033 | Email: info@knightguardssecurity.com | Website: www.knightguardssecurity.com",
       ],
       margin.left,
@@ -244,10 +235,7 @@ export async function GET(
       },
     });
   } catch (error) {
-    console.error("Error generating invoice PDF:", error);
-    return NextResponse.json(
-      { error: "Failed to generate invoice PDF" },
-      { status: 500 }
-    );
+    console.error("Error generating receipt PDF:", error);
+    return new NextResponse("Error generating receipt PDF", { status: 500 });
   }
 }

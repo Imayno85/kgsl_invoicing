@@ -104,6 +104,9 @@ await getUser(session.user?.id as string);
                   <DropdownMenuItem>
                     <Link href="/dashboard/invoices">Invoices</Link>
                   </DropdownMenuItem>
+                  <DropdownMenuItem>
+                    <Link href="/dashboard/invoices/">Receipts</Link>
+                  </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
                     <form

@@ -1,13 +1,15 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { HomeIcon, Users2 } from "lucide-react";
+import { HomeIcon, Users2, WalletIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 export const dashboardLinks = [
   { id: 0, name: "Dashboard", href: "/dashboard", icon: HomeIcon },
   { id: 1, name: "Invoices", href: "/dashboard/invoices", icon: Users2 },
+  { id: 2, name: "Receipts", href: "/dashboard/receipts", icon:  WalletIcon},
+  
 ];
 
 export function DashboardLinks() {
